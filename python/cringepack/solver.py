@@ -32,7 +32,18 @@ class CringepackMethod:
     name = 'CRINGEPACK'
     properties = ''
 
-    def solve(self, A: csc_matrix, bs: list[np.ndarray]) -> np.ndarray:
-        solver = Cringepack()
-        solver.factorize(A)
-        return [solver.solve_b(b) for b in bs]
+    def __init__(self):
+        self.solver = Cringepack()
+    
+    def _lu(self, A: csc_matrix):
+        self.solver.factorize(A)
+    
+    def _solve_b(self, b: np.ndarray) -> np.ndarray:
+        out, err = self.solver.solve_b(b)
+        return out
+    
+    def _solve(self, A: csc_matrix, bs: list[np.ndarray]) -> np.ndarray:
+        self.solver.factorize(A)
+        return [self.solver.solve_b(b) for b in bs]
+
+    
