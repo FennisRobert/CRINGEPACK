@@ -1,17 +1,15 @@
-from cringepack import compare, SuperLUNatural, CringepackMethod
+from cringepack import SuperLUNatural, CringepackMethod, run_tests, SuperLUOpt, SparseMatrix
 
 
 
-from matrices.small import SET_CU
+from matrices.small import SET_ALL
 from matrices.big import SET_EM
 
 
 SuperLU = SuperLUNatural()
 CRINGEPACK = CringepackMethod()
+SuperLUOpt = SuperLUOpt()
 
-for A,b in SET_CU:
-    compare(A, [b,], SuperLU, CRINGEPACK)
+#run_tests(SET_ALL+SET_EM, [CRINGEPACK, SuperLU, SuperLUOpt])
 
-for A,bs in SET_EM:
-    compare(A, bs, SuperLU, CRINGEPACK)
-        
+run_tests([SparseMatrix.gen_random(100, 4, 0.02, 'SPD') for _ in range(10)], [CRINGEPACK, SuperLU, SuperLUOpt])

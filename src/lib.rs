@@ -9,7 +9,9 @@ mod linsolve;
 mod metisperm;
 mod pmat;
 mod sparse;
+mod chol;
 
+use crate::chol::elimination_tree;
 use linsolve::SparseSolver;
 use sparse::{CCMatrixView, MatrixType};
 
@@ -61,6 +63,19 @@ impl Cringepack {
         Ok((out.to_pyarray(py).into(), code))
     }
 
+    fn cholesky(
+        &mut self,
+        py: Python<'_>,
+        row: PyReadonlyArray1<'_, i64>,
+        colptr: PyReadonlyArray1<'_, i64>,
+        data: PyReadonlyArray1<'_, Complex64>,
+    ) {
+        let row = row.as_array();
+        let colptr = colptr.as_array();
+        let data = data.as_array();
+        let mut mat = gen_mat_view(row, colptr, data).to_owned();
+        let etree = elimination_tree(&mat);
+    }
     fn solve(
         &mut self,
         py: Python<'_>,

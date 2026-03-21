@@ -20,7 +20,7 @@ class SuperLUNatural(SolveMethod):
 
     name = 'SuperLU'
     properties = 'NAT-ORD'
-
+    istruth = True
     def __init__(self):
         self.luf = None
 
@@ -33,3 +33,22 @@ class SuperLUNatural(SolveMethod):
     
     def _solve_b(self, b: np.ndarray):
         return self.luf.solve(b)
+    
+class SuperLUOpt(SolveMethod):
+
+    name = 'SuperLUOpt'
+    properties = 'MMD Aᵀ+A'
+    istruth = False
+    def __init__(self):
+        self.luf = None
+
+    def _solve(self, A: csc_matrix, bs: list[np.ndarray]):
+        lu = splu(A, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.001)
+        return [lu.solve(b) for b in bs]
+    
+    def _lu(self, A: csc_matrix):
+        self.luf = splu(A, permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.001)
+    
+    def _solve_b(self, b: np.ndarray):
+        return self.luf.solve(b)
+    

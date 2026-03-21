@@ -16,6 +16,9 @@ class Cringepack:
 
         return (rows, indptr, data)
     
+    def cholesky(self, A: csc_matrix) -> None:
+        self.rs.cholesky(*self._decompose(A))
+        
     def factorize(self, A: csc_matrix) -> None:
         self.rs.factorize(*self._decompose(A))
 
