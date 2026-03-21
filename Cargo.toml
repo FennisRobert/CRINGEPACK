@@ -1,0 +1,22 @@
+[package]
+name = "cringepack"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "_cringepack"
+crate-type = ["cdylib"]
+
+[dependencies]
+env_logger = "0.11.9"
+log = "0.4.29"
+metis-sys = "0.3.2"
+num-complex = "0.4.6"
+numpy = "0.28.0"
+pyo3 = "0.28.2"
+rayon = "1.11.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
