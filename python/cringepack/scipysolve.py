@@ -22,14 +22,14 @@ class SuperLUNatural(SolveMethod):
     properties = 'NAT-ORD'
 
     def __init__(self):
-        self.lu = None
+        self.luf = None
 
     def _solve(self, A: csc_matrix, bs: list[np.ndarray]):
         lu = splu(A, permc_spec='NATURAL')
         return [lu.solve(b) for b in bs]
     
     def _lu(self, A: csc_matrix):
-        self.lu = splu(A, permc_spec='NATURAL')
+        self.luf = splu(A, permc_spec='NATURAL')
     
     def _solve_b(self, b: np.ndarray):
-        return self.lu.solve(b)
+        return self.luf.solve(b)
