@@ -2,10 +2,9 @@ use log::{debug, error, info, trace, warn};
 use num_complex::{Complex64, ComplexFloat};
 use numpy::ndarray::{Array1, ArrayView1, s};
 
-use crate::pmat::{PMatColumn, PMatrix};
-use crate::sparse::{CCMatrixBase, CCMatrixOwned, CCMatrixView, MatrixType};
-
-use crate::metisperm::nested_dissection;
+use crate::pmat::{PMatrix};
+use crate::sparse::{CCMatrixBase, CCMatrixOwned, MatrixType};
+use crate::perm::Permutation;
 
 const CZERO: Complex64 = Complex64::new(0.0, 0.0);
 const CONE: Complex64 = Complex64::new(1.0, 0.0);
@@ -16,30 +15,6 @@ fn zero_vec(arr: &ArrayView1<Complex64>) -> Array1<Complex64> {
     Array1::<Complex64>::zeros(arr.len())
 }
 
-fn preorder(matrix: &CCMatrixOwned) -> Vec<usize> {
-    let mut p: Vec<usize> = (0..matrix.get_n()).collect();
-    let mut score = vec![0usize; matrix.get_n()];
-    let mut counter = vec![0usize; matrix.get_n()];
-    for i in 0..matrix.get_n() {
-        let i1 = matrix.get_indptr()[i] as usize;
-        let i2 = matrix.get_indptr()[i + 1] as usize;
-        for j in i1..i2 {
-            let r = matrix.get_rows()[j] as usize;
-            score[i] += r;
-            counter[i] += 1;
-        }
-    }
-    let mut rating = vec![0.0f64; matrix.get_n()];
-    for i in 0..matrix.get_n() {
-        rating[i] = score[i] as f64 / counter[i] as f64;
-    }
-    p.sort_by(|&a, &b| rating[a].total_cmp(&rating[b]));
-    p
-}
-
-fn preorder_metis(matrix: &CCMatrixOwned) -> Vec<usize> {
-    nested_dissection(&matrix.transpose())
-}
 
 fn solve_drhs_isl(matrix: &CCMatrixOwned, vec: &ArrayView1<Complex64>) -> Array1<Complex64> {
     debug!("Calling Lower Triangular solve routine...");
@@ -159,7 +134,7 @@ pub struct SparseSolver {
     upper: CCMatrixOwned,
     initialized: bool,
     perm_ppiv: Vec<usize>,
-    perm_fill: Vec<usize>,
+    perm_fill: Permutation,
     xset: Vec<usize>,
     xmark: Vec<bool>,
 }
@@ -171,21 +146,15 @@ impl SparseSolver {
             upper: CCMatrixOwned::empty(),
             initialized: false,
             perm_ppiv: Vec::new(),
-            perm_fill: Vec::new(),
+            perm_fill: Permutation::empty(),
             xset: Vec::new(),
             xmark: Vec::new(),
         }
     }
 
-    pub fn metis(&mut self, matrix: &mut CCMatrixOwned) -> Array1<i64> {
-        let out = nested_dissection(matrix);
-        let arr = Array1::from_vec(out.iter().map(|&x| x as i64).collect());
-        arr
-    }
-
     pub fn lu_decomp(&mut self, matrix: &mut CCMatrixOwned) {
-        self.perm_fill = preorder(matrix);
-        matrix.permute(&self.perm_fill);
+        self.perm_fill = Permutation::metis(&matrix);
+        matrix.permute(&self.perm_fill.perm);
         let (lower, upper, perm) = generic_lu(matrix);
         self.lower = lower;
         self.upper = upper;
@@ -248,7 +217,7 @@ impl SparseSolver {
     pub fn permute_b(&self, bvec: &ArrayView1<Complex64>) -> Array1<Complex64> {
         let mut b_reord = Array1::<Complex64>::zeros(bvec.len());
         for i in 0..bvec.len() {
-            b_reord[i] = bvec[self.perm_fill[i]];
+            b_reord[i] = bvec[self.perm_fill.perm[i]];
         }
         let mut b_perm = Array1::<Complex64>::zeros(bvec.len());
         for i in 0..bvec.len() {
@@ -260,7 +229,7 @@ impl SparseSolver {
     pub fn unpermute_x(&self, x: &Array1<Complex64>) -> Array1<Complex64> {
         let mut x_out = Array1::<Complex64>::zeros(x.len());
         for i in 0..x.len() {
-            x_out[self.perm_fill[i]] = x[i];
+            x_out[self.perm_fill.perm[i]] = x[i];
         }
         x_out
     }

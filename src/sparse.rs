@@ -1,6 +1,5 @@
 use num_complex::{Complex64, ComplexFloat};
-use numpy::ndarray::{Array, Array1, ArrayView1, s};
-use pyo3::basic::CompareOp;
+use numpy::ndarray::{ Array1, ArrayView1, s};
 
 const CZERO: Complex64 = Complex64::new(0.0, 0.0);
 const CONE: Complex64 = Complex64::new(1.0, 0.0);
@@ -42,6 +41,17 @@ pub struct ColBuffer {
     pub colids: Vec<usize>,
     pub coln: Vec<usize>,
     pub inuse: Vec<bool>,
+}
+
+pub struct CCSymbolic {
+    pub pinv: Vec<usize>,
+    pub perm_fill: Vec<usize>,
+    pub etree: Vec<usize>,
+    pub indptr: Vec<usize>,
+    pub leftmost: Vec<usize>,
+    pub nrows_qr: usize,
+    pub nnz_l: usize,
+    pub nnz_u: usize,
 }
 
 impl ColBuffer {
@@ -484,68 +494,32 @@ impl CCMatrixOwned {
         self.data = data;
         self.indptr = indptr;
     }
-    // pub fn permute(&mut self, permvec: Vec<usize>) {
-    //     // if self.n < 500_000 {
-    //     //     return self.quick_permute(permvec)
-    //     // }
-    //     return self.quick_permute(permvec);
 
-    //     let mut buffer = ColBuffer::new(self.maxnic);
+    pub fn permute_new(&self, permvec: &Vec<usize>) -> CCMatrixOwned {
+        let mut inv_perm = vec![0usize; permvec.len()];
+        for i in 0..permvec.len() {
+            inv_perm[permvec[i]] = i;
+        }
+        let mut data = Array1::<Complex64>::zeros(self.nnz);
+        let mut rows = Array1::<usize>::zeros(self.nnz);
+        let mut indptr = Array1::<usize>::zeros(self.indptr.len());
 
-    //     for i in 0..self.maxnic {
-    //         let i1 = self.indptr[i];
-    //         let i2 = self.indptr[i+1];
-    //         buffer.store(i, self.data.slice(s![i1..i2]),self.rows.slice(s![i1..i2])).unwrap();
-    //     }
+        let mut ptr = 0usize;
 
-    //     // first Maxnic columns are free to ovewrite
-    //     let mut data: Vec<Complex64> = vec![CZERO; self.maxnic];
-    //     let mut rows: Vec<usize> = vec![0usize; self.maxnic];
-    //     let mut n: usize;
-
-    //     let mut buffer_col: usize = self.maxnic;
-    //     let mut ptr = 0usize;
-
-    //     for ii in 0..self.n-self.maxnic {
-    //         let icol = permvec[ii];
-
-    //         match buffer.is_buffered(icol) {
-    //             Ok(index) => {
-    //                 data = buffer.data[index].clone();
-    //                 rows = buffer.rows[index].clone();
-    //                 n = buffer.coln[index];
-    //                 buffer.clear(index);
-    //             },
-    //             Err(_) => {
-    //                 let i1 = self.indptr[icol];
-    //                 let i2 = self.indptr[icol+1];
-    //                 for (i, (r,c)) in self.iter_col(icol).enumerate() {
-    //                     data[i] = c;
-    //                     rows[i] = r;
-    //                 }
-    //                 n = i2-i1
-    //             }
-    //         }
-    //         // from here the data is ready
-    //         self.indptr[ii+1] = n;
-    //         for j in 0..n {
-    //             self.data[ptr + j] = data[j];
-    //             self.rows[ptr + j] = permvec[rows[j]];
-    //         }
-    //         ptr = ptr + n;
-    //         if buffer_col < self.n {
-    //             let i1 = self.indptr[buffer_col];
-    //             let i2 = self.indptr[buffer_col];
-    //             buffer.store(buffer_col, self.data.slice(s![i1..i2]),self.rows.slice(s![i1..i2])).unwrap();
-    //         }
-    //         buffer_col = buffer_col + 1;
-
-    //         data.fill(CZERO);
-    //         rows.fill(0usize);
-    //     }
-
-    // }
-
+        for i in 0..self.n {
+            let colnr = permvec[i];
+            let i1 = self.indptr[colnr];
+            let i2 = self.indptr[colnr + 1];
+            let n = i2 - i1;
+            for (j, index) in (i1..i2).enumerate() {
+                data[ptr + j] = self.data[index];
+                rows[ptr + j] = inv_perm[self.rows[index]];
+            }
+            ptr += n;
+            indptr[i + 1] = ptr;
+        }
+        CCMatrixOwned::new(rows, indptr, data, self.mtype)
+    }
     fn add_mat_gen(&self, matb: &CCMatrixOwned, coeff: Complex64) -> CCMatrixOwned {
         if self.get_n() != matb.get_n() {
             panic!(
@@ -668,3 +642,4 @@ impl<'a> CCMatrixView<'a> {
         )
     }
 }
+

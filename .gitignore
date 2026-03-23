@@ -1,2 +1,8 @@
 target/
 .venv/
+.dylib
+.yml
+.pyc
+.sogit
+__pycache__/
+.dSYM

@@ -10,8 +10,13 @@ mod metisperm;
 mod pmat;
 mod sparse;
 mod chol;
+mod acc;
+mod symbolic;
+mod perm;
+mod etree;
 
-use crate::chol::elimination_tree;
+use crate::symbolic::CCSymbolic;
+use crate::chol::cholesky;
 use linsolve::SparseSolver;
 use sparse::{CCMatrixView, MatrixType};
 
@@ -73,8 +78,10 @@ impl Cringepack {
         let row = row.as_array();
         let colptr = colptr.as_array();
         let data = data.as_array();
-        let mut mat = gen_mat_view(row, colptr, data).to_owned();
-        let etree = elimination_tree(&mat);
+        let mat = gen_mat_view(row, colptr, data).to_owned();
+        let symbolic = CCSymbolic::new(&mat);
+        cholesky(&mat, &symbolic);
+
     }
     fn solve(
         &mut self,
@@ -94,21 +101,21 @@ impl Cringepack {
         Ok((out.to_pyarray(py).into(), code))
     }
 
-    fn metis(
-        &mut self,
-        py: Python<'_>,
-        row: PyReadonlyArray1<'_, i64>,
-        colptr: PyReadonlyArray1<'_, i64>,
-        data: PyReadonlyArray1<'_, Complex64>,
-    ) -> PyResult<(Py<numpy::PyArray1<i64>>, i64)> {
-        let row = row.as_array();
-        let colptr = colptr.as_array();
-        let data = data.as_array();
-        let mut mat = gen_mat_view(row, colptr, data).to_owned();
-        let out = self.solver.metis(&mut mat);
+    // fn metis(
+    //     &mut self,
+    //     py: Python<'_>,
+    //     row: PyReadonlyArray1<'_, i64>,
+    //     colptr: PyReadonlyArray1<'_, i64>,
+    //     data: PyReadonlyArray1<'_, Complex64>,
+    // ) -> PyResult<(Py<numpy::PyArray1<i64>>, i64)> {
+    //     let row = row.as_array();
+    //     let colptr = colptr.as_array();
+    //     let data = data.as_array();
+    //     let mut mat = gen_mat_view(row, colptr, data).to_owned();
+    //     let out = self.solver.metis(&mut mat);
 
-        Ok((out.to_pyarray(py).into(), 0))
-    }
+    //     Ok((out.to_pyarray(py).into(), 0))
+    // }
 }
 
 #[pymodule]

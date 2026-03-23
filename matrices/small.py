@@ -179,7 +179,7 @@ _MAT_DAVIS_CHOL = np.array([
     [0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0],
 ])
 
-_Mat_DAVIS_CHOL = csc_matrix(_MAT_DAVIS_CHOL + _MAT_DAVIS_CHOL.T).astype(np.complex128)
+_Mat_DAVIS_CHOL = csc_matrix(_MAT_DAVIS_CHOL + _MAT_DAVIS_CHOL.T + np.eye(11)).astype(np.complex128)
 _b0 = np.zeros([0,0,0,0,0,0,0,0,0,0,0], dtype=np.complex128)
 ############################################################
 #                           SETS                           #
