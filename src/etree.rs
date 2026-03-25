@@ -162,8 +162,10 @@ pub fn postorder(etree: &Vec<usize>) -> (Vec<usize>, Vec<usize>) {
     (etree_post, post_ordering)
 }
 
-pub fn etree_post(matrix: &CCMatrixOwned) -> (Vec<usize>, Vec<usize>) {
-    postorder(&elimination_tree(&matrix))
+pub fn etree_post(matrix: &CCMatrixOwned) -> (Vec<usize>, Vec<usize>, Vec<usize>) {
+    let etree = elimination_tree(&matrix);
+    let (etree_postorder, post) = postorder(&etree);
+    (etree, etree_postorder, post)
 }
 
 
@@ -311,4 +313,59 @@ pub fn row_non_zeros(matrix: &CCMatrixOwned, etree: &Vec<usize>, post: &Vec<usiz
     }
 
     n_in_row
+}
+
+pub struct EliminationTree {
+    pub etree: Vec<usize>,
+    pub visited: Vec<usize>,
+    pub stack: Vec<usize>,
+    startindex: usize,
+    n: usize,
+}
+
+impl EliminationTree {
+
+    pub fn new(etree: Vec<usize>) -> Self {
+        let n = etree.len();
+        let visited = vec![0usize; n];
+        let stack = vec![0usize; n];
+        EliminationTree { etree: etree, visited: visited, stack: stack, startindex: 0usize, n: n}
+    }
+
+    pub fn reach(&mut self, mat: &CCMatrixOwned, row_index: usize) {
+
+        let mut top = self.n;
+        self.visited[row_index] = row_index;
+
+        let p1 = mat.indptr[row_index];
+        let p2 = mat.indptr[row_index+1];
+
+        for p in p1..p2 {
+            let mut i = mat.rows[p];
+            if i > row_index {
+                continue;
+            }
+
+            let mut len = 0;
+            while self.visited[i] != row_index {
+                self.stack[len] = i;
+                len += 1;
+                self.visited[i] = row_index;
+                i = self.etree[i];
+                if i==usize::MAX {
+                    break;
+                }
+            }
+
+            for i in (0..len).rev() {
+                top -= 1;
+                self.stack[top] = self.stack[i];
+            }
+        }
+        self.startindex = top;
+    }
+
+    pub fn non_zeros(&self) -> &[usize] {
+        &self.stack[self.startindex..self.n]
+    }
 }

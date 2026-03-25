@@ -11,6 +11,7 @@ pub enum MatrixType {
     UnSymmetric,
     LowerTriangular,
     UpperTriangular,
+    SPD,
 }
 
 pub struct CCMatrixView<'a> {
@@ -229,7 +230,11 @@ pub trait CCMatrixBase {
             let mut line = String::new();
             for icol in 0..self.get_n() {
                 let val = self.get(irow, icol);
-                line.push_str(&format!("{:.3} ", val.re));
+                if icol==irow {
+                    line.push_str(&format!("[{:.3}+{:.3}i] ", val.re, val.im));
+                }else{
+                  line.push_str(&format!("{:.3}+{:.3}i   ", val.re, val.im));
+                }
             }
             println!("{}", line);
         }
@@ -315,6 +320,21 @@ impl CCMatrixOwned {
         mat
     }
 
+    pub fn zeros(nnz: usize, n: usize, maxnic: usize, mtype: MatrixType) -> Self {
+        let rows = Array1::<usize>::zeros(nnz);
+        let data = Array1::<Complex64>::zeros(nnz);
+        let indptr = Array1::<usize>::zeros(n+1);
+
+        CCMatrixOwned {
+            nnz: nnz,
+            n: n,
+            rows: rows,
+            indptr: indptr,
+            data: data,
+            maxnic: maxnic,
+            mtype: mtype,
+        }
+    }
     pub fn empty() -> Self {
         CCMatrixOwned {
             nnz: 0,
@@ -385,11 +405,26 @@ impl CCMatrixOwned {
         result
     }
 
+    pub fn sort(&mut self) {
+        // TODO: OPTIMIZE THIS
+        for col in 0..self.n {
+            let p1 = self.indptr[col];
+            let p2 = self.indptr[col+1];
+            let mut ids: Vec<usize> = (p1..p2).collect();
+            ids.sort_by_key(|&i| self.rows[i]);
+            let sorted_rows: Vec<usize> = ids.iter().map(|&i| self.rows[i]).collect();
+            let sorted_data: Vec<Complex64> = ids.iter().map(|&i| self.data[i]).collect();
+            for (i, &id) in ids.iter().enumerate() {
+                self.rows[p1+i] = sorted_rows[i];
+                self.data[p1+i] = sorted_data[i];
+            }
+        }
+    }
     fn n_in_col(&self, col: usize) -> usize {
         self.get_indptr()[col + 1] - self.get_indptr()[col]
     }
 
-    fn mult_mat(&self, matb: &CCMatrixOwned) -> CCMatrixOwned {
+    pub fn mult_mat(&self, matb: &CCMatrixOwned) -> CCMatrixOwned {
         let mut indptr = Array1::<usize>::zeros(self.get_indptr().len());
 
         let mut nnz: usize = 0;
@@ -433,7 +468,6 @@ impl CCMatrixOwned {
         for col_of_b in 0..matb.get_n() {
             mult_data.fill(Complex64::new(0.0, 0.0));
             mult_row.fill(maxn + 1);
-            let mut mult_id: Vec<usize> = (0..maxn).collect();
             let idb1 = matb.get_indptr()[col_of_b] as usize;
             let idb2 = matb.get_indptr()[col_of_b + 1] as usize;
             let mut mctr: usize = 0; // Counts the total multiplications performed
@@ -446,6 +480,11 @@ impl CCMatrixOwned {
                     mctr += 1;
                 }
             }
+            if mctr == 0 {
+                indptr[col_of_b + 1] = pointer;
+                continue;
+            }
+            let mut mult_id: Vec<usize> = (0..mctr).collect();
             mult_id.sort_by_key(|&i| mult_row[i]);
             let mut current_row = mult_row[mult_id[0]];
 

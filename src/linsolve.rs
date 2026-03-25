@@ -5,6 +5,8 @@ use numpy::ndarray::{Array1, ArrayView1, s};
 use crate::pmat::{PMatrix};
 use crate::sparse::{CCMatrixBase, CCMatrixOwned, MatrixType};
 use crate::perm::Permutation;
+use crate::symbolic::CCSymbolic;
+use crate::chol::cholesky_decomp_mf;
 
 const CZERO: Complex64 = Complex64::new(0.0, 0.0);
 const CONE: Complex64 = Complex64::new(1.0, 0.0);
@@ -27,16 +29,11 @@ fn solve_drhs_isl(matrix: &CCMatrixOwned, vec: &ArrayView1<Complex64>) -> Array1
     sol
 }
 
-fn solve_drhs_isl_sparse(
-    matrix: &CCMatrixOwned,
-    vec: &ArrayView1<Complex64>,
-    xset: &Vec<usize>,
-) -> Array1<Complex64> {
-    debug!("Calling Sparse Lower Triangular solve routine...");
+fn solve_drhs_isl_chol(matrix: &CCMatrixOwned, vec: &ArrayView1<Complex64>) -> Array1<Complex64> {
+    debug!("Calling Lower Triangular solve routine...");
     let mut sol = vec.to_owned();
-    for &j in xset.iter().rev() {
-        sol[j] = sol[j]; // / matrix.get(j,j);
-
+    for j in 0..matrix.n {
+        sol[j] = sol[j] / matrix.data[matrix.indptr[j]];
         for (i, d) in matrix.iter_col(j).filter(|&(i, _)| i > j) {
             sol[i] = sol[i] - d * sol[j];
         }
@@ -46,7 +43,6 @@ fn solve_drhs_isl_sparse(
 
 fn solve_drhs_isu(matrix: &CCMatrixOwned, vec: &ArrayView1<Complex64>) -> Array1<Complex64> {
     debug!("Calling Upper Triangular solve routine...");
-    //println!("{:?}", matrix.indptr());
     let mut sol = vec.to_owned();
     for j in (0..matrix.n).rev() {
         //sol[j] = sol[j] / matrix.get(j,j);
@@ -63,18 +59,19 @@ fn solve_drhs_isu(matrix: &CCMatrixOwned, vec: &ArrayView1<Complex64>) -> Array1
     }
     sol
 }
-fn solve_drhs_isu_sparse(
-    matrix: &CCMatrixOwned,
-    vec: &ArrayView1<Complex64>,
-    xset: &Vec<usize>,
-) -> Array1<Complex64> {
-    debug!("Calling Sparse Upper Triangular solve routine...");
+
+fn solve_lt_chol(matrix: &CCMatrixOwned, vec: &ArrayView1<Complex64>) -> Array1<Complex64> {
+    debug!("Calling Upper Triangular solve routine...");
     let mut sol = vec.to_owned();
-    for &j in xset.iter().rev() {
-        sol[j] = sol[j] / matrix.get(j, j);
-        for (i, d) in matrix.iter_col(j).filter(|&(i, _)| i < j) {
-            sol[i] = sol[i] - d * sol[j];
+    for j in (0..matrix.n).rev() {
+        let p1 = matrix.indptr[j];
+        let p2 = matrix.indptr[j + 1];
+        for p in (p1+1)..p2 {
+            let i = matrix.rows[p];
+            sol[j] = sol[j] - matrix.data[p] * sol[i];
         }
+
+        sol[j] = sol[j] / matrix.data[p1]
     }
     sol
 }
@@ -87,18 +84,11 @@ fn generic_lu(matrix: &CCMatrixOwned) -> (CCMatrixOwned, CCMatrixOwned, Vec<usiz
 
     let n = matrix.get_n();
 
-    //lower.printsmall("LOWER:");
-    //upper.printsmall("UPPER:");
-    // Start standard gaussian elimination
     for icol in 0..(n - 1) {
-        //debug!("Pivoting column {}", icol);
         let mut pivot = upper.get(icol, icol);
-        // Partial Pivoting
-        //upper.printnz("UPPER:");
         if pivot.norm_sqr() < PIVOT_SQ {
             let (i, row, val) = upper.getcol(icol).max(icol);
             let swap_pair = (icol, row);
-            //println!("Pivoting rows {}←→{}", icol, row);
             upper.ppivot(swap_pair, upper.n);
             lower.ppivot(swap_pair, icol);
             perm.swap(icol, row);
@@ -108,10 +98,6 @@ fn generic_lu(matrix: &CCMatrixOwned) -> (CCMatrixOwned, CCMatrixOwned, Vec<usiz
 
         let (rows, data) = upper.iter_col(icol, icol + 1);
 
-        //println!("Eliminating col {}, with:", icol);
-        //println!("row = {:?}", rows);
-        //println!("data = {:?}", data);
-        //upper.printsmall("BEFORE ELIM:");
         upper.eliminate_rows(icol, &rows, &data.iter().map(|v| v / pivot).collect());
 
         for (irow, val) in rows.iter().zip(data) {
@@ -119,9 +105,8 @@ fn generic_lu(matrix: &CCMatrixOwned) -> (CCMatrixOwned, CCMatrixOwned, Vec<usiz
             lower.set(*irow, icol, -val_new);
         }
     }
-    //lower.printsmall("LOWER:");
-    //upper.printsmall("UPPER:");
-    //upper.printnz("UPPER:");
+    //lower.printsmall("Lower:");
+    //upper.printsmall("Upper:");
     (
         lower.to_ccmatrix(MatrixType::LowerTriangular),
         upper.to_ccmatrix(MatrixType::UpperTriangular),
@@ -135,8 +120,7 @@ pub struct SparseSolver {
     initialized: bool,
     perm_ppiv: Vec<usize>,
     perm_fill: Permutation,
-    xset: Vec<usize>,
-    xmark: Vec<bool>,
+    mtype: MatrixType,
 }
 
 impl SparseSolver {
@@ -147,8 +131,7 @@ impl SparseSolver {
             initialized: false,
             perm_ppiv: Vec::new(),
             perm_fill: Permutation::empty(),
-            xset: Vec::new(),
-            xmark: Vec::new(),
+            mtype: MatrixType::Generic,
         }
     }
 
@@ -163,57 +146,19 @@ impl SparseSolver {
         debug!("LU Decomposition complete!");
     }
 
-    pub fn xset_dfs_lower(&mut self, j: usize, depth: usize) {
-        self.xmark[j] = true;
-
-        let neighbors: Vec<(usize, Complex64)> = self.lower.iter_col(j).collect();
-        for (r, _) in neighbors {
-            if r != j && self.xmark[r] != true && depth + 1 < self.lower.get_n() {
-                self.xset_dfs_lower(r, depth + 1usize);
-            }
-        }
-        self.xset.push(j);
+    pub fn cholesky(&mut self, matrix: &mut CCMatrixOwned) {
+        let perm_fill = Permutation::metis(&matrix);
+        matrix.permute(&perm_fill.perm);
+        let mut symbolic = CCSymbolic::new(matrix);
+        matrix.sort();
+        self.lower = cholesky_decomp_mf(&matrix, &mut symbolic).unwrap();
+        self.upper = self.lower.transpose();
+        self.initialized = true;
+        self.perm_fill = perm_fill;
+        self.perm_ppiv = (0..matrix.n).collect();
+        self.mtype = MatrixType::SPD;
+        debug!("Cholesky Decomposition complete!");
     }
-    pub fn xset_dfs_upper(&mut self, j: usize, depth: usize) {
-        self.xmark[j] = true;
-
-        let neighbors: Vec<(usize, Complex64)> = self.upper.iter_col(j).collect();
-        for (r, _) in neighbors {
-            if r != j && self.xmark[r] != true && depth + 1 < self.upper.get_n() {
-                self.xset_dfs_upper(r, depth + 1usize);
-            }
-        }
-        self.xset.push(j);
-    }
-
-    pub fn build_reach_L(&mut self, bvec: &ArrayView1<Complex64>) {
-        debug!("Building reach(L,B) size {}", self.lower.get_n());
-        self.xset = Vec::with_capacity(self.lower.get_n());
-        self.xmark = vec![false; self.lower.get_n()];
-
-        for i in 0..bvec.len() {
-            if bvec[i] != CZERO {
-                if !self.xmark[i] {
-                    self.xset_dfs_lower(i, 0);
-                }
-            }
-        }
-    }
-
-    pub fn build_reach_U(&mut self, bvec: &ArrayView1<Complex64>) {
-        debug!("Building reach(U,B) size {}", self.upper.get_n());
-        self.xset = Vec::with_capacity(self.upper.get_n());
-        self.xmark = vec![false; self.upper.get_n()];
-
-        for i in 0..bvec.len() {
-            if bvec[i] != CZERO {
-                if !self.xmark[i] {
-                    self.xset_dfs_upper(i, 0);
-                }
-            }
-        }
-    }
-
     pub fn permute_b(&self, bvec: &ArrayView1<Complex64>) -> Array1<Complex64> {
         let mut b_reord = Array1::<Complex64>::zeros(bvec.len());
         for i in 0..bvec.len() {
@@ -230,6 +175,14 @@ impl SparseSolver {
         let mut x_out = Array1::<Complex64>::zeros(x.len());
         for i in 0..x.len() {
             x_out[self.perm_fill.perm[i]] = x[i];
+        }
+        x_out
+    }
+
+    pub fn iunpermute_x(&self, x: &Array1<Complex64>) -> Array1<Complex64> {
+        let mut x_out = Array1::<Complex64>::zeros(x.len());
+        for i in 0..x.len() {
+            x_out[self.perm_fill.iperm[i]] = x[i];
         }
         x_out
     }
@@ -252,18 +205,23 @@ impl SparseSolver {
     }
 
     pub fn solve_b(&mut self, bvec: &ArrayView1<Complex64>) -> (Array1<Complex64>, i64) {
-        debug!("Solving b.");
         if !self.initialized {
             debug!("Solver not initialized.");
             return (zero_vec(bvec), -1);
         }
-        //self.build_reach_L(bvec);
-        let b_perm = self.permute_b(bvec);
-        let y = solve_drhs_isl(&self.lower, &b_perm.view());
-        //self.build_reach_U(&y.view());
-        let mut sol = solve_drhs_isu(&self.upper, &y.view());
-        sol = self.unpermute_x(&sol);
-        (sol, 0)
+        if self.mtype == MatrixType::SPD {
+            let b_perm = self.permute_b(bvec);
+            let y = solve_drhs_isl_chol(&self.lower, &b_perm.view());
+            let mut sol = solve_lt_chol(&self.lower, &y.view());
+            sol = self.unpermute_x(&sol);
+            return (sol, 0)
+        }else {
+            let b_perm = self.permute_b(bvec);
+            let y = solve_drhs_isl(&self.lower, &b_perm.view());
+            let mut sol = solve_drhs_isu(&self.upper, &y.view());
+            sol = self.unpermute_x(&sol);
+            return (sol, 0)
+        }
     }
 
     pub fn solve_dense(
@@ -271,9 +229,6 @@ impl SparseSolver {
         matrix: &mut CCMatrixOwned,
         vec: &ArrayView1<Complex64>,
     ) -> (Array1<Complex64>, i64) {
-        // Exit codes
-        // -1 = error
-        // -0 = Succes
         match matrix.get_mtype() {
             MatrixType::LowerTriangular => (solve_drhs_isl(matrix, vec), 0),
             MatrixType::UpperTriangular => (solve_drhs_isu(matrix, vec), 0),

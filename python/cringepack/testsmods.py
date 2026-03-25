@@ -20,6 +20,9 @@ class SolveMethod:
 
     def _lu(self, A: csc_matrix):
         pass
+    
+    def _cholesky(self, A: csc_matrix):
+        self._lu(A)
 
     def solve(self, A: csc_matrix, bs: list[np.ndarray]) -> tuple[float, list[np.ndarray]]:
         t0 = time()
@@ -34,6 +37,11 @@ class SolveMethod:
     def lu(self, A: csc_matrix) -> float:
         t0 = time()
         self._lu(A)
+        return time()-t0
+    
+    def cholesky(self, A: csc_matrix) -> float:
+        t0 = time()
+        self._cholesky(A)
         return time()-t0
 
 def run_tests(matrices: list[SparseMatrix], solvers: list[SolveMethod]):
@@ -51,10 +59,13 @@ def run_tests(matrices: list[SparseMatrix], solvers: list[SolveMethod]):
         bs = mat.bs
         n = A.shape[0]
         nnz = A.nnz
-
+        mtype = mat.mtype
         for solver in solvers:
             try:
-                t_lu = solver.lu(A)
+                if mtype=='SPD':
+                    t_lu = solver.cholesky(A)
+                else:
+                    t_lu = solver.lu(A)
                 lu_ok = True
             except Exception:
                 t_lu = float('nan')

@@ -49,4 +49,5 @@ class CringepackMethod(SolveMethod):
         self.solver.factorize(A)
         return [self.solver.solve_b(b) for b in bs]
 
-    
+    def _cholesky(self, A):
+        self.solver.cholesky(A)

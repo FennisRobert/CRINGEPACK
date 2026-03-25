@@ -15,8 +15,8 @@ mod symbolic;
 mod perm;
 mod etree;
 
-use crate::symbolic::CCSymbolic;
-use crate::chol::cholesky;
+use crate::{sparse::CCMatrixBase, symbolic::CCSymbolic};
+use crate::chol::cholesky_decomp_ul;
 use linsolve::SparseSolver;
 use sparse::{CCMatrixView, MatrixType};
 
@@ -78,9 +78,9 @@ impl Cringepack {
         let row = row.as_array();
         let colptr = colptr.as_array();
         let data = data.as_array();
-        let mat = gen_mat_view(row, colptr, data).to_owned();
-        let symbolic = CCSymbolic::new(&mat);
-        cholesky(&mat, &symbolic);
+        let mut mat = gen_mat_view(row, colptr, data).to_owned();
+        
+        self.solver.cholesky(&mut mat);
 
     }
     fn solve(

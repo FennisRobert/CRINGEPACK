@@ -1,8 +1,50 @@
-target/
-.venv/
-.dylib
-.yml
-.pyc
-.sogit
+# Rust
+/target/
+
+# Python
 __pycache__/
-.dSYM
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.egg
+*.whl
+/venv/
+.venv/
+*.pth
+
+# Data/Science files
+*.npy
+*.npz
+*.pkl
+*.sav
+*.mat
+*.nc
+*.fits
+*.dat
+*.arff
+*.wav
+
+# Build artifacts
+*.o
+*.a
+*.dylib
+*.rlib
+*.rmeta
+*.bin
+
+# Compiled archives
+*.gz
+
+# IDE / OS
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Config/lock that's generated
+Cargo.lock
+
+# Misc
+*.log

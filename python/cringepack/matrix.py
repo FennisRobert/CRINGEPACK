@@ -27,14 +27,15 @@ class SparseMatrix:
         rng = np.random.default_rng(Ndim * 1000 + nb)
 
         if mtype == 'SPD':
-            # Hermitian positive definite: A = B @ B^H + diag
-            nnz_per_row = max(1, int(Ndim * fill_ratio))
-            B = np.zeros((Ndim, Ndim), dtype=np.complex128)
+            A = np.zeros((Ndim, Ndim), dtype=np.complex128)
             for i in range(Ndim):
-                cols = rng.choice(Ndim, size=nnz_per_row, replace=False)
-                for j in cols:
-                    B[i, j] = rng.uniform(-1, 1) + 1j * rng.uniform(-1, 1)
-            A = B @ B.conj().T + Ndim * np.eye(Ndim, dtype=np.complex128)
+                A[i, i] = Ndim * 10 + rng.uniform(0, 1) + 1j * rng.uniform(-0.1, 0.1)
+            for i in range(Ndim):
+                for j in range(i + 1, Ndim):
+                    if rng.random() < fill_ratio:
+                        val = rng.uniform(-0.01, 0.01) + 1j * rng.uniform(-0.01, 0.01)
+                        A[i, j] = val
+                        A[j, i] = val
             A = csc_matrix(A)
 
         elif mtype == 'Symmetric':

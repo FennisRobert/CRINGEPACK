@@ -39,7 +39,7 @@ impl Permutation {
             iperm
         }
     }
-
+    
     pub fn empty() -> Self {
         Permutation { perm: Vec::with_capacity(0usize), iperm: Vec::with_capacity(0usize) }
     }

@@ -2,9 +2,12 @@ from cringepack import SuperLUNatural, CringepackMethod, run_tests, SuperLUOpt, 
 
 
 
-from matrices.small import MAT_DAVIS_CHOL
+from matrices.small import SET_SPD
 
+mat = SET_SPD[0]
+print(mat.A.toarray().real)
 
 CRINGEPACK = CringepackMethod()
+SUPERLU = SuperLUOpt()
 
-CRINGEPACK.solver.cholesky(MAT_DAVIS_CHOL.A)
+run_tests(SET_SPD, [CRINGEPACK, SUPERLU])

@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 env_logger = "0.11.9"
+faer = "0.24.0"
 log = "0.4.29"
 metis-sys = "0.3.2"
 num-complex = "0.4.6"
