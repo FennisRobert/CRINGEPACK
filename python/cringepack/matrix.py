@@ -29,11 +29,11 @@ class SparseMatrix:
         if mtype == 'SPD':
             A = np.zeros((Ndim, Ndim), dtype=np.complex128)
             for i in range(Ndim):
-                A[i, i] = Ndim * 10 + rng.uniform(0, 1) + 1j * rng.uniform(-0.1, 0.1)
+                A[i, i] = Ndim + rng.uniform(0, 1) + 1j * rng.uniform(-0.1, 0.1)
             for i in range(Ndim):
                 for j in range(i + 1, Ndim):
                     if rng.random() < fill_ratio:
-                        val = rng.uniform(-0.01, 0.01) + 1j * rng.uniform(-0.01, 0.01)
+                        val = rng.uniform(-0.1, 0.01) + 1j * rng.uniform(-0.1, 0.01)
                         A[i, j] = val
                         A[j, i] = val
             A = csc_matrix(A)

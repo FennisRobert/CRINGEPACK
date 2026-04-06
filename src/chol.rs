@@ -9,14 +9,92 @@ use crate::sparse::MatrixType;
 const CZERO: Complex64 = Complex64::new(0.0, 0.0);
 const CONE: Complex64 = Complex64::new(1.0, 0.0);
 use faer::{Par, Accum, Mat, Scale, mat, Col,ColRef, linalg};
+use std::collections::{HashSet};
 use crate::pmat::PMatrix;
 
+struct ColumnBuffer {
+    data: Vec<Complex64>,
+    rowi: Vec<usize>,
+    counter: usize,
+    buffer: Vec<Complex64>,
+}
+
+impl ColumnBuffer {
+
+    fn new(size: usize) -> Self{
+        let data = vec![CZERO; size];
+        let rowi = vec![0usize; size];
+        let counter = 0usize;
+        let buffer = vec![CZERO; size];
+        ColumnBuffer { data, rowi, counter, buffer}
+    }
+
+    fn add(&mut self, val: Complex64, id: usize) {
+        self.data[id] += val;
+        self.rowi[self.counter] = id;
+        self.counter += 1;
+    }
+
+    fn to_column(&mut self, scaler: Complex64, skip_id: usize) -> (Mat<Complex64>, Vec<usize>) {
+        let mut ids: Vec<usize> = (0..self.counter).collect();
+        ids.sort_by_key(|&i| self.rowi[i]);
+        
+        let mut ptr = 0usize;
+        let mut current = usize::MAX;
+        let mut out_ids: Vec<usize> = Vec::new();
+
+        for &idx in ids.iter() {
+            let row = self.rowi[idx];
+            if row == skip_id {
+                continue;
+            }
+            if row != current {
+                current = row;
+                out_ids.push(current);
+                self.buffer[out_ids.len() - 1] = self.data[current] * scaler;
+            }
+        }
+
+        // Clear data
+        for &idx in ids.iter() {
+            self.data[self.rowi[idx]] = CZERO;
+        }
+        self.counter = 0;
+
+        let col = Mat::from_fn(out_ids.len(), 1, |i, _| self.buffer[i]);
+        (col, out_ids)
+    }
+    // fn to_column(&mut self, scaler: Complex64, skip_id: usize) -> (Mat<Complex64>, Vec<usize>) {
+    //     let mut ids: Vec<usize> = (0..self.counter).collect();
+    //     ids.sort_by_key(|&i| self.rowi[i]);
+    //     let mut ptr = 0usize;
+    //     let mut current = self.rowi[ids[0]];
+
+    //     for i in 0..self.counter{
+    //         if self.rowi[i] == skip_id{
+    //             continue
+    //         }
+    //         if current != self.rowi[i] {
+    //             ptr += 1;
+    //             current = self.rowi[i];
+    //             self.rowi[ptr] = current;
+    //         }
+    //         self.buffer[ptr] = self.data[current] * scaler;
+    //         self.data[current] = CZERO;
+    //     }
+    //     self.counter = 0usize;
+    //     let col = Mat::from_fn(ptr+1, 1,|i,j| self.buffer[i]);
+    //     let ids = self.rowi[..ptr+1].to_vec();
+    //     (col, ids)
+    // }
+
+
+}
 struct FrontalMatrix {
     matrix: Mat<Complex64>,
     colids: Vec<usize>,
     icolids: HashMap<usize, usize>
 }
-
 
 impl FrontalMatrix {
     fn new(matrix: Mat<Complex64>, colids: Vec<usize>) -> Self {
@@ -38,6 +116,9 @@ impl FrontalMatrix {
         println!("{:?}", self.matrix);
     }
 
+    fn idf(&self) -> String {
+        format!("Matrix[{:?}]", self.colids).to_string()
+    }
     fn is_superset(&self, other: &FrontalMatrix) -> bool {
         for colid in other.colids.iter() {
             if !self.icolids.contains_key(colid) {
@@ -50,18 +131,22 @@ impl FrontalMatrix {
     fn get_diag(&self, index: &usize) -> Option<Complex64> {
         match self.icolids.get(index) {
             Some(i) => {
-                println!("Diag ({},{})", i,i);
                 Some(self.matrix[(*i, *i)])
             },
             None => None,
         }
     }
-
+    
     fn absorb(&mut self, other: &FrontalMatrix, exclude_id: usize)  {
         for (i, icol) in other.colids.iter().enumerate() {
             if *icol == exclude_id {
                 continue
             }
+            if !self.icolids.contains_key(icol) {
+                panic!("absorb: missing colid {} in self.colids={:?}, other.colids={:?}, exclude={}",
+                    icol, self.colids, other.colids, exclude_id);
+            }
+
             let &is = self.icolids.get(icol).unwrap();
             for (j, jcol) in other.colids.iter().enumerate() {
                 if *jcol == exclude_id {
@@ -73,23 +158,15 @@ impl FrontalMatrix {
         }
     }
 
-    // fn split(&self, colid: usize) -> Option<(Complex64, Col<Complex64>, Mat<Complex64>)> {
-    //     match self.icolids.get(&colid) {
-    //         Some(&icol) => {
-    //             (self.matrix[(icol, icol)], self.matrix.col(icol)[1..], self.matrix[(1.., 1..)])
-    //         }
-    //         None => None
-    //     }
-    // }
     fn iter_off_diag_column(&self, i_col: usize) -> Vec<(usize, Complex64)>{
+        
         match self.icolids.get(&i_col) {
-            Some(&icol) => (1..self.colids.len()).map(|i| (self.colids[i], self.matrix[(i,icol)])).collect(),
-            None => Vec::new(),
+            Some(&icol) => (0..self.colids.len()).map(|i| (self.colids[i], self.matrix[(i,icol)])).collect(),
+            None => (0..self.colids.len()).map(|i| (self.colids[i], CZERO)).collect(),
         }
         
     }
 }
-
 
 struct FrontalMatrixStack {
     mats: Vec<FrontalMatrix>,
@@ -110,6 +187,12 @@ impl FrontalMatrixStack {
         self.keep.push(true);
     }
 
+    fn print_overview(&self) {
+        println!("Frontal Matrices:");
+        for i in 0..self.mats.len(){
+            println!(" - {}", self.mats[i].idf());
+        }
+    }
     fn clean(&mut self) {
         let mut i = 0;
         while i < self.keep.len() {
@@ -135,156 +218,133 @@ fn gen_vec(arr: ArrayView1<Complex64>, i1: usize, i2: usize) -> Mat<Complex64> {
     Mat::from_fn(i2-i1, 1usize, |i, j| arr[i1+i])
 }
 
+
 pub fn cholesky_decomp_mf(mat_c: &CCMatrixOwned, symb: &mut CCSymbolic) -> Option<CCMatrixOwned> {
 
-
+    let pmat = PMatrix::from_cc(mat_c).printnz("NZ");
     let nnz_l = symb.nnz_l;
     let mut maxnic = 0usize;
     for i in 0..mat_c.n {
         maxnic = maxnic.max(symb.indptr[i+1]-symb.indptr[i]);
     }
 
+    // Create Empty Sparse L matrix 
     let mut mat_l: CCMatrixOwned = CCMatrixOwned::zeros(nnz_l, mat_c.n, maxnic, MatrixType::LowerTriangular);
 
+    // Copy Index pointers to mat_l
     for i in 0..(mat_c.n + 1) {
         mat_l.indptr[i] = symb.indptr[i];
     }
 
+    // Create a stack of frontal matrices
     let mut fmstack = FrontalMatrixStack::new();
 
-    let mut col_buffer = Col::<Complex64>::zeros(mat_c.n);
-    let mut buffer_ids: Vec<usize> = vec![usize::MAX; mat_c.n*5];
-    let mut buffer_ctr = 0usize;
 
-    PMatrix::from_cc(mat_c).printnz("MATRIX");
-    println!("Rows: {:?}", mat_c.rows);
-    println!("Inds: {:?}", mat_c.indptr);
-    // Signel column multifrontal
-    println!("Postorder = {:?}", symb.post);
-    for i_leaf in 0..mat_c.n-1 {
-        println!("");
+    let mut colbuf = ColumnBuffer::new(mat_c.n);
+
+    // Notation: 
+    // A11 = top/left item
+    // A12 = Vertical column
+    // A22 = leftover block matrix
+    for i_leaf in 0..mat_c.n {
+
         let i_col = symb.post[i_leaf];
-        println!("Solving Entry/Column: {} -> {} [parent = {}]", i_leaf, i_col, symb.etree.etree[i_col]);
 
+        // Extract all rows for A12
         let p1 = mat_c.indptr[i_col];
         let p2 = mat_c.indptr[i_col + 1];
 
-        let mut l11 = mat_c.data[p1];
-
-        mat_l.rows[mat_l.indptr[i_col]] = i_col;
+        // Start building l11 = A11
+        let mut l11 = mat_c.udiag(i_col);
         
-        // Formation of the dense vector 
-        
-        // Write L12 onto the column buffer
-        for p in (p1)..p2 {
+        // Write L12 except L11 onto the column buffer
+        for p in p1..p2 {
             
             let r = mat_c.rows[p];
+            // Skip L11
             if r <= i_col {
                 continue
             }
-            println!("Assigning {:?} to {:?}", mat_c.data[p], r);
-            col_buffer[r] = mat_c.data[p];
-            buffer_ids[buffer_ctr] = r;
-            buffer_ctr += 1
+            colbuf.add(mat_c.data[p], r);
         }
 
+        // To remove contains frontal matrix indices that will be absorbed into the new FM
         let mut to_remove: Vec<usize> = Vec::with_capacity(100);
 
+        // For each frontal matrix that is a parent of the current column
         for (ip, fm) in fmstack.iter_parent(i_col){
+            // subtract the frontal matrix entry from L11
             match fm.get_diag(&i_col) {
                 Some(value) => l11 = l11 - value,
                 None => {}
             }
-
-            // Add the column of the frontal matrix to the column buffer
+            // For each other entry in the frontal matrix
+            //println!("{}, Mergin frontal matrix with nodes: {:?}", i_col, fm.colids);
             for (irow,d) in fm.iter_off_diag_column(i_col) {
-                println!("Assigning {:?} to {:?}", d, irow);
-                col_buffer[irow] -= d;
-                buffer_ids[buffer_ctr] = irow;
-                buffer_ctr += 1;
+                // Skip the diagonal L11
+                //println!("---{},{}",irow, d);
+                if irow == i_col {
+                    continue
+                }
+                // Subtract the frontal matrix entry in row[irow] from L12
+                colbuf.add(-d, irow);
             }
             to_remove.push(ip)
         }
 
-        
-
+        // Compute L11 and store
         l11 = l11.sqrt();
-        println!("L11 = {}", l11);
-        
-        // Store L11 = A11.sqrt() onto the diagonal
         mat_l.data[mat_l.indptr[i_col]] = l11;
+        mat_l.rows[mat_l.indptr[i_col]] = i_col;
+
         
-        col_buffer = Scale(CONE/ l11) *  col_buffer; // a21 / l11
-        
-        // Column buffer to new Frontal Matrix
-        if i_col == mat_l.n-2 {
-            println!("Last entry!");
-            let mut last = mat_c.data[mat_c.data.len()-1];
-            for fm in fmstack.mats {
-                last -= fm.matrix[(1,1)]*fm.matrix[(1,1)];
-                fm.printself();
-            }
-            mat_l.data[mat_l.indptr[i_col + 1]] = last.sqrt();
-            mat_l.rows[mat_l.indptr[i_col + 1]] = mat_l.n-1;
-            mat_l.printsmall();
+        // if its the second last column:
+        if i_col == mat_l.n-1 {
             break
         }
 
-        let mut ids: Vec<usize> = (0..buffer_ctr).collect();
-        ids.sort_by_key(|&i| buffer_ids[i]);
-        let mut cur = buffer_ids[ids[0]];
-        let mut ptr = 0usize;
-        let mut data = vec![CZERO; buffer_ctr];
-        
-        let mut indices = vec![0usize; buffer_ctr];
-        
-        data[0] = col_buffer[cur];
-        indices[ptr] = cur;
-        mat_l.data[mat_l.indptr[i_col] + 1usize + ptr] = col_buffer[cur];
-        mat_l.rows[mat_l.indptr[i_col] + 1usize + ptr] = cur;
-        println!("Buffer:");
-        println!("COL Buffer: {:?}", col_buffer);
-        println!("Buffer_IDS: {:?}", buffer_ids);
-        println!("{}", buffer_ctr);
-
-        println!("Expected Nonzeros: {}", mat_l.indptr[i_col+1]-mat_l.indptr[i_col]);
-        for i in 1..buffer_ctr {
-            let new_row = buffer_ids[ids[i]];
-            if new_row != cur {
-                ptr += 1;
-                
-                data[ptr] = col_buffer[new_row];
-                indices[ptr] = new_row;
-
-                
-                col_buffer[cur] = CZERO;
-                cur = new_row;
+        if colbuf.counter > 0 {
+            // Divide L12 by L11
+            let (l12, l12_ids) = colbuf.to_column(CONE/l11, i_col);
+            
+            let mut ptr = 0usize;
+            for (i, &row) in l12_ids.iter().enumerate() {
+                mat_l.data[mat_l.indptr[i_col] + ptr + 1] += l12[(i, 0usize)];
+                mat_l.rows[mat_l.indptr[i_col] + ptr + 1] = row;
+                ptr += 1
             }
-            println!("{} -> {} -> {} -> {}", i, ids[i], ptr, cur);
-            buffer_ids[ids[i]] = 0usize;
+
+            let mut fmat = FrontalMatrix::from_vec(l12, l12_ids);
+
+            //println!("Icol: {}, parent: {} FM IDS: {:?}", i_col, symb.etree.etree[i_col], fmat.colids, );
+            for &i in to_remove.iter(){
+                //println!("   FM({}) - {:?}", fmstack.parents[i], fmstack.mats[i].colids);
+                fmat.absorb(&fmstack.mats[i], i_col);
+                fmstack.keep[i] = false;
+            }
+
+            fmstack.clean();
+        
+            fmstack.add(fmat, symb.etree.etree[i_col]);
 
         }
-        buffer_ctr = 0;
-        println!("Ptr= {}", ptr);
-        let col = Mat::from_fn(ptr+1, 1usize, |i,j| data[i]);
-
-        let mut fmat = FrontalMatrix::from_vec(col, indices[..ptr+1].to_vec());
-
-        for &i in to_remove.iter(){
-            println!("Absorbing fm{} into the new matrix with ids: {:?}", i, indices[..ptr+1].to_vec());
-            fmat.absorb(&fmstack.mats[i], i_col);
-            fmstack.keep[i] = false;
-        }
-        fmat.printself();
-        fmstack.clean();
-        
-        fmstack.add(fmat, symb.etree.etree[i_col]);
-        
-        mat_l.printsmall();
 
         
     }
 
+    mat_l.printsmall();
+    println!("True Lower Triangular Matrix");
+    match cholesky_decomp_ul(mat_c, symb) {
+        Ok(mat) => {
+            for i in 0..mat_l.nnz {
+                println!("UL = {:?}[{}] == [{}]{:?} MF", mat_l.data[i], mat_l.rows[i], mat.rows[i], mat.data[i]);
+            }
+            for i in 0..mat_l.n+1 {
+                println!(" UL = {} == {} = MF", mat_l.indptr[i], mat.indptr[i]);
+            }
+            mat.printsmall()},
+        Err(err) => {println!("Aborted with: {}", err);},
+    }
 
     Some(mat_l)
 }
