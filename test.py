@@ -7,10 +7,10 @@ from matrices.big import SET_EM
 
 
 SuperLU = SuperLUNatural()
-CRINGEPACK = CringepackMethod()
+CRINGEPACK = CringepackMethod('MF')
 SuperLUOpt = SuperLUOpt()
 
 #run_tests(SET_ALL + SET_EM, [CRINGEPACK, SuperLU, SuperLUOpt])
 N = 1
 #run_tests([SparseMatrix.gen_random(N, 4, 0.3, 'SPD') for _ in range(1)], [CRINGEPACK, SuperLU, SuperLUOpt])
-run_tests([SparseMatrix.gen_random(30, 4, 0.2, 'SPD') for _ in range(1)], [CRINGEPACK, SuperLU, SuperLUOpt])
+run_tests([SparseMatrix.gen_random(1000, 4, 0.005, 'SPD') for _ in range(1)], [CRINGEPACK, SuperLU, SuperLUOpt])

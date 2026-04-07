@@ -2,6 +2,8 @@ from cringepack._cringepack import Cringepack as Cringepack_RS
 import numpy as np
 from scipy.sparse import csc_matrix
 from .testsmods import SolveMethod
+from typing import Literal
+
 
 class Cringepack:
 
@@ -16,8 +18,8 @@ class Cringepack:
 
         return (rows, indptr, data)
     
-    def cholesky(self, A: csc_matrix) -> None:
-        self.rs.cholesky(*self._decompose(A))
+    def cholesky(self, A: csc_matrix, method: int) -> None:
+        self.rs.cholesky(*self._decompose(A), method)
         
     def factorize(self, A: csc_matrix) -> None:
         self.rs.factorize(*self._decompose(A))
@@ -34,9 +36,13 @@ class Cringepack:
 class CringepackMethod(SolveMethod):
     name = 'CRINGEPACK'
     properties = ''
-
-    def __init__(self):
+    _methodmap = {
+        'UL': 1,
+        'MF': 0,
+    }
+    def __init__(self, method: Literal['UL','MF'] = 'MF'):
         self.solver = Cringepack()
+        self.method = self._methodmap[method]
     
     def _lu(self, A: csc_matrix):
         self.solver.factorize(A)
@@ -50,4 +56,4 @@ class CringepackMethod(SolveMethod):
         return [self.solver.solve_b(b) for b in bs]
 
     def _cholesky(self, A):
-        self.solver.cholesky(A)
+        self.solver.cholesky(A, self.method)

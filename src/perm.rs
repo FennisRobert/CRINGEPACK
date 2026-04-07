@@ -1,7 +1,6 @@
-use crate::sparse::CCMatrixOwned;
-use crate::metisperm::nested_dissection;
 use crate::acc::vec_inv;
-
+use crate::metisperm::nested_dissection;
+use crate::sparse::CCMatrixOwned;
 
 fn preorder(matrix: &CCMatrixOwned) -> Vec<usize> {
     let mut p: Vec<usize> = (0..matrix.n).collect();
@@ -24,8 +23,6 @@ fn preorder(matrix: &CCMatrixOwned) -> Vec<usize> {
     p
 }
 
-
-
 pub struct Permutation {
     pub perm: Vec<usize>,
     pub iperm: Vec<usize>,
@@ -34,14 +31,14 @@ pub struct Permutation {
 impl Permutation {
     pub fn new(perm: Vec<usize>) -> Self {
         let iperm = vec_inv(&perm);
-        Permutation {
-            perm,
-            iperm
-        }
+        Permutation { perm, iperm }
     }
-    
+
     pub fn empty() -> Self {
-        Permutation { perm: Vec::with_capacity(0usize), iperm: Vec::with_capacity(0usize) }
+        Permutation {
+            perm: Vec::with_capacity(0usize),
+            iperm: Vec::with_capacity(0usize),
+        }
     }
 
     pub fn naive(matrix: &CCMatrixOwned) -> Self {
@@ -51,4 +48,3 @@ impl Permutation {
         Permutation::new(nested_dissection(&matrix))
     }
 }
-

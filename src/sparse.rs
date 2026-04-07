@@ -1,5 +1,5 @@
 use num_complex::{Complex64, ComplexFloat};
-use numpy::ndarray::{ Array1, ArrayView1, s};
+use numpy::ndarray::{Array1, ArrayView1, s};
 
 const CZERO: Complex64 = Complex64::new(0.0, 0.0);
 const CONE: Complex64 = Complex64::new(1.0, 0.0);
@@ -230,10 +230,10 @@ pub trait CCMatrixBase {
             let mut line = String::new();
             for icol in 0..self.get_n() {
                 let val = self.get(irow, icol);
-                if icol==irow {
+                if icol == irow {
                     line.push_str(&format!("[{:.3}+{:.3}i] ", val.re, val.im));
-                }else{
-                  line.push_str(&format!("{:.3}+{:.3}i   ", val.re, val.im));
+                } else {
+                    line.push_str(&format!("{:.3}+{:.3}i   ", val.re, val.im));
                 }
             }
             println!("{}", line);
@@ -323,7 +323,7 @@ impl CCMatrixOwned {
     pub fn zeros(nnz: usize, n: usize, maxnic: usize, mtype: MatrixType) -> Self {
         let rows = Array1::<usize>::zeros(nnz);
         let data = Array1::<Complex64>::zeros(nnz);
-        let indptr = Array1::<usize>::zeros(n+1);
+        let indptr = Array1::<usize>::zeros(n + 1);
 
         CCMatrixOwned {
             nnz: nnz,
@@ -409,14 +409,14 @@ impl CCMatrixOwned {
         // TODO: OPTIMIZE THIS
         for col in 0..self.n {
             let p1 = self.indptr[col];
-            let p2 = self.indptr[col+1];
+            let p2 = self.indptr[col + 1];
             let mut ids: Vec<usize> = (p1..p2).collect();
             ids.sort_by_key(|&i| self.rows[i]);
             let sorted_rows: Vec<usize> = ids.iter().map(|&i| self.rows[i]).collect();
             let sorted_data: Vec<Complex64> = ids.iter().map(|&i| self.data[i]).collect();
             for (i, &id) in ids.iter().enumerate() {
-                self.rows[p1+i] = sorted_rows[i];
-                self.data[p1+i] = sorted_data[i];
+                self.rows[p1 + i] = sorted_rows[i];
+                self.data[p1 + i] = sorted_data[i];
             }
         }
     }
@@ -681,4 +681,3 @@ impl<'a> CCMatrixView<'a> {
         )
     }
 }
-

@@ -1,14 +1,20 @@
-use crate::sparse::CCMatrixOwned;
 use crate::acc::vec_inv;
+use crate::sparse::CCMatrixOwned;
 
-fn firstdesc(n: usize, parent: &Vec<usize>, post: &Vec<usize>, first: &mut Vec<usize>, level: &mut Vec<usize>) {
+fn firstdesc(
+    n: usize,
+    parent: &Vec<usize>,
+    post: &Vec<usize>,
+    first: &mut Vec<usize>,
+    level: &mut Vec<usize>,
+) {
     first.fill(usize::MAX);
     for k in 0..n {
         let i = post[k];
         let mut len: usize = 0;
         let mut r = i;
         loop {
-            if r==usize::MAX || first[r] != usize::MAX {
+            if r == usize::MAX || first[r] != usize::MAX {
                 break;
             }
             first[r] = k;
@@ -18,7 +24,7 @@ fn firstdesc(n: usize, parent: &Vec<usize>, post: &Vec<usize>, first: &mut Vec<u
 
         if r == usize::MAX {
             if len > 0 {
-                len = len -1;
+                len = len - 1;
             }
         } else {
             len = len + level[r];
@@ -32,15 +38,19 @@ fn firstdesc(n: usize, parent: &Vec<usize>, post: &Vec<usize>, first: &mut Vec<u
             }
             s = parent[s]
         }
-
     }
-
 }
 
-
-pub fn tree_depth_first_search(j: usize, k: usize, head: &mut Vec<usize>, next: &Vec<usize>, post: &mut Vec<usize>, stack: &mut Vec<usize>) -> usize {
+pub fn tree_depth_first_search(
+    j: usize,
+    k: usize,
+    head: &mut Vec<usize>,
+    next: &Vec<usize>,
+    post: &mut Vec<usize>,
+    stack: &mut Vec<usize>,
+) -> usize {
     let mut top = 0 as i64;
-    
+
     let mut k = k;
     stack[0] = j;
     while top >= 0 {
@@ -50,17 +60,14 @@ pub fn tree_depth_first_search(j: usize, k: usize, head: &mut Vec<usize>, next: 
             top = top - 1;
             post[k] = p;
             k += 1usize;
-        }else{
+        } else {
             head[p] = next[i];
             top += 1;
             stack[top as usize] = i;
-            
         }
     }
     k
-
 }
-
 
 pub fn elimination_tree(matrix: &CCMatrixOwned) -> Vec<usize> {
     let n = matrix.n;
@@ -96,8 +103,14 @@ pub fn elimination_tree(matrix: &CCMatrixOwned) -> Vec<usize> {
     parent
 }
 
-
-fn leaf(i: usize, j: usize, first: &Vec<usize>, maxfirst: &mut Vec<usize>, prevleaf: &mut Vec<usize>, ancestor: &mut Vec<usize>,) -> (usize, usize) {
+fn leaf(
+    i: usize,
+    j: usize,
+    first: &Vec<usize>,
+    maxfirst: &mut Vec<usize>,
+    prevleaf: &mut Vec<usize>,
+    ancestor: &mut Vec<usize>,
+) -> (usize, usize) {
     let q = 0usize;
     let mut jleaf = 0usize;
     if i <= j || first[j] == usize::MAX || (maxfirst[i] != usize::MAX && first[j] <= maxfirst[i]) {
@@ -118,14 +131,13 @@ fn leaf(i: usize, j: usize, first: &Vec<usize>, maxfirst: &mut Vec<usize>, prevl
         q = ancestor[q];
     }
     let mut s = jprev;
-    while s!= q{
+    while s != q {
         let sparent = ancestor[s];
         ancestor[s] = q;
         s = sparent;
     }
     (q, jleaf)
 }
-
 
 pub fn postorder(etree: &Vec<usize>) -> (Vec<usize>, Vec<usize>) {
     let n = etree.len();
@@ -134,9 +146,9 @@ pub fn postorder(etree: &Vec<usize>) -> (Vec<usize>, Vec<usize>) {
     let mut next = vec![0usize; n];
     let mut stack = vec![0usize; n];
     let mut post_ordering = vec![0usize; n];
-    for j in (0..(n-1)).rev() {
+    for j in (0..(n - 1)).rev() {
         if etree[j] == usize::MAX {
-            continue
+            continue;
         }
         next[j] = head[etree[j]];
         head[etree[j]] = j;
@@ -151,14 +163,16 @@ pub fn postorder(etree: &Vec<usize>) -> (Vec<usize>, Vec<usize>) {
     for i in 0..n {
         iperm[post_ordering[i]] = i;
     }
-    let etree_post: Vec<usize> = (0..n).map(|i| {
-        let old = post_ordering[i];
-        if etree[old] == usize::MAX {
-            usize::MAX
-        }else {
-            iperm[etree[old]]
-        }
-    }).collect();
+    let etree_post: Vec<usize> = (0..n)
+        .map(|i| {
+            let old = post_ordering[i];
+            if etree[old] == usize::MAX {
+                usize::MAX
+            } else {
+                iperm[etree[old]]
+            }
+        })
+        .collect();
     (etree_post, post_ordering)
 }
 
@@ -168,12 +182,7 @@ pub fn etree_post(matrix: &CCMatrixOwned) -> (Vec<usize>, Vec<usize>, Vec<usize>
     (etree, etree_postorder, post)
 }
 
-
-pub fn col_non_zeros(
-    matrix: &CCMatrixOwned,
-    etree: &Vec<usize>,
-    post: &Vec<usize>,
-) -> Vec<usize> {
+pub fn col_non_zeros(matrix: &CCMatrixOwned, etree: &Vec<usize>, post: &Vec<usize>) -> Vec<usize> {
     let n = matrix.n;
 
     let mut ancestor = vec![0usize; n];
@@ -208,9 +217,7 @@ pub fn col_non_zeros(
         let p2 = matrix.indptr[j + 1] as usize;
         for p in p1..p2 {
             let i = matrix.rows[p] as usize;
-            let (q, jleaf) = leaf(
-                i, j, &first, &mut maxfirst, &mut prevleaf, &mut ancestor,
-            );
+            let (q, jleaf) = leaf(i, j, &first, &mut maxfirst, &mut prevleaf, &mut ancestor);
             if jleaf >= 1 {
                 delta[j] += 1;
             }
@@ -233,7 +240,6 @@ pub fn col_non_zeros(
     delta.iter().map(|&x| x as usize).collect()
 }
 
-
 struct RowsFirstInCol {
     head: Vec<usize>,
     next: Vec<usize>,
@@ -245,7 +251,7 @@ impl RowsFirstInCol {
         let mut head = vec![usize::MAX; n];
         let mut next = vec![usize::MAX; n];
         let inv_post = vec_inv(&post_ordering);
-        
+
         for icol in 0..n {
             let i1 = mat.indptr[icol] as usize;
             let i2 = mat.indptr[icol + 1] as usize;
@@ -258,7 +264,6 @@ impl RowsFirstInCol {
         }
         RowsFirstInCol { head, next }
     }
-    
 
     fn printself(&self) {
         for i in 0..self.head.len() {
@@ -273,12 +278,10 @@ impl RowsFirstInCol {
         }
         println!("HEAD: {:?}", self.head);
         println!("NEXT: {:?}", self.next);
-        
     }
 }
 
 pub fn row_non_zeros(matrix: &CCMatrixOwned, etree: &Vec<usize>, post: &Vec<usize>) -> Vec<usize> {
-    
     let n = matrix.n;
     let ap = &matrix.indptr;
     let ai = &matrix.rows;
@@ -298,10 +301,17 @@ pub fn row_non_zeros(matrix: &CCMatrixOwned, etree: &Vec<usize>, post: &Vec<usiz
 
     for k in 0..n {
         let j = post[k];
-        for p in ap[j] .. ap[j+1] {
+        for p in ap[j]..ap[j + 1] {
             let i = ai[p];
             println!("Loop k={}", k);
-            let (q, jleaf) = leaf(i, j, &mut first, &mut maxfirst, &mut prevleaf, &mut ancestors);
+            let (q, jleaf) = leaf(
+                i,
+                j,
+                &mut first,
+                &mut maxfirst,
+                &mut prevleaf,
+                &mut ancestors,
+            );
             if jleaf != 0usize {
                 println!("levels = {}, {}", level[j], level[q]);
                 n_in_row[i] += level[j] - level[q];
@@ -324,21 +334,25 @@ pub struct EliminationTree {
 }
 
 impl EliminationTree {
-
     pub fn new(etree: Vec<usize>) -> Self {
         let n = etree.len();
         let visited = vec![0usize; n];
         let stack = vec![0usize; n];
-        EliminationTree { etree: etree, visited: visited, stack: stack, startindex: 0usize, n: n}
+        EliminationTree {
+            etree: etree,
+            visited: visited,
+            stack: stack,
+            startindex: 0usize,
+            n: n,
+        }
     }
 
     pub fn reach(&mut self, mat: &CCMatrixOwned, row_index: usize) {
-
         let mut top = self.n;
         self.visited[row_index] = row_index;
 
         let p1 = mat.indptr[row_index];
-        let p2 = mat.indptr[row_index+1];
+        let p2 = mat.indptr[row_index + 1];
 
         for p in p1..p2 {
             let mut i = mat.rows[p];
@@ -352,7 +366,7 @@ impl EliminationTree {
                 len += 1;
                 self.visited[i] = row_index;
                 i = self.etree[i];
-                if i==usize::MAX {
+                if i == usize::MAX {
                     break;
                 }
             }
@@ -363,6 +377,35 @@ impl EliminationTree {
             }
         }
         self.startindex = top;
+    }
+
+    pub fn n_leafs(&self, post: &Vec<usize>) -> usize {
+        let n = self.etree.len();
+        let mut alive = 0usize;
+        let mut max_alive = 0usize;
+        let mut children_count = vec![0usize; n];
+
+        for i in 0..n {
+            if self.etree[i] != usize::MAX {
+                children_count[self.etree[i]] += 1;
+            }
+        }
+
+        let mut remaining_children = children_count.clone();
+
+        for k in 0..n {
+            let j = post[k];
+            alive += 1;
+
+            if self.etree[j] != usize::MAX {
+                remaining_children[self.etree[j]] -= 1;
+            }
+            alive -= children_count[j];
+
+            max_alive = max_alive.max(alive)
+        }
+        max_alive
+        
     }
 
     pub fn non_zeros(&self) -> &[usize] {

@@ -2,11 +2,11 @@ use log::{debug, error, info, trace, warn};
 use num_complex::{Complex64, ComplexFloat};
 use numpy::ndarray::{Array1, ArrayView1, s};
 
-use crate::pmat::{PMatrix};
-use crate::sparse::{CCMatrixBase, CCMatrixOwned, MatrixType};
+use crate::chol::{cholesky_decomp_mf, cholesky_decomp_ul};
 use crate::perm::Permutation;
+use crate::pmat::PMatrix;
+use crate::sparse::{CCMatrixBase, CCMatrixOwned, MatrixType};
 use crate::symbolic::CCSymbolic;
-use crate::chol::cholesky_decomp_mf;
 
 const CZERO: Complex64 = Complex64::new(0.0, 0.0);
 const CONE: Complex64 = Complex64::new(1.0, 0.0);
@@ -16,7 +16,6 @@ const PIVOT_SQ: f64 = PIVOT_TH * PIVOT_TH;
 fn zero_vec(arr: &ArrayView1<Complex64>) -> Array1<Complex64> {
     Array1::<Complex64>::zeros(arr.len())
 }
-
 
 fn solve_drhs_isl(matrix: &CCMatrixOwned, vec: &ArrayView1<Complex64>) -> Array1<Complex64> {
     debug!("Calling Lower Triangular solve routine...");
@@ -66,7 +65,7 @@ fn solve_lt_chol(matrix: &CCMatrixOwned, vec: &ArrayView1<Complex64>) -> Array1<
     for j in (0..matrix.n).rev() {
         let p1 = matrix.indptr[j];
         let p2 = matrix.indptr[j + 1];
-        for p in (p1+1)..p2 {
+        for p in (p1 + 1)..p2 {
             let i = matrix.rows[p];
             sol[j] = sol[j] - matrix.data[p] * sol[i];
         }
@@ -146,12 +145,18 @@ impl SparseSolver {
         debug!("LU Decomposition complete!");
     }
 
-    pub fn cholesky(&mut self, matrix: &mut CCMatrixOwned) {
+    pub fn cholesky(&mut self, matrix: &mut CCMatrixOwned, method: i64) {
         let perm_fill = Permutation::metis(&matrix);
         matrix.permute(&perm_fill.perm);
         let mut symbolic = CCSymbolic::new(matrix);
         matrix.sort();
-        self.lower = cholesky_decomp_mf(&matrix, &mut symbolic).unwrap();
+        if method == 0 {
+            println!("Using Multi-Frontal.");
+            self.lower = cholesky_decomp_mf(&matrix, &mut symbolic).unwrap();
+        } else if method == 1 {
+            println!("Using Up-Looking.");
+            self.lower = cholesky_decomp_ul(&matrix, &mut symbolic).unwrap();
+        }
         self.upper = self.lower.transpose();
         self.initialized = true;
         self.perm_fill = perm_fill;
@@ -214,13 +219,13 @@ impl SparseSolver {
             let y = solve_drhs_isl_chol(&self.lower, &b_perm.view());
             let mut sol = solve_lt_chol(&self.lower, &y.view());
             sol = self.unpermute_x(&sol);
-            return (sol, 0)
-        }else {
+            return (sol, 0);
+        } else {
             let b_perm = self.permute_b(bvec);
             let y = solve_drhs_isl(&self.lower, &b_perm.view());
             let mut sol = solve_drhs_isu(&self.upper, &y.view());
             sol = self.unpermute_x(&sol);
-            return (sol, 0)
+            return (sol, 0);
         }
     }
 

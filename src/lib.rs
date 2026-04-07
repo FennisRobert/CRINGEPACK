@@ -5,21 +5,20 @@ use num_complex::Complex64;
 use numpy::{ToPyArray, ndarray::ArrayView1};
 use pyo3::prelude::*;
 
+mod acc;
+mod chol;
+mod etree;
 mod linsolve;
 mod metisperm;
+mod perm;
 mod pmat;
 mod sparse;
-mod chol;
-mod acc;
 mod symbolic;
-mod perm;
-mod etree;
 
-use crate::{sparse::CCMatrixBase, symbolic::CCSymbolic};
 use crate::chol::cholesky_decomp_ul;
+use crate::{sparse::CCMatrixBase, symbolic::CCSymbolic};
 use linsolve::SparseSolver;
 use sparse::{CCMatrixView, MatrixType};
-
 
 #[pyclass]
 pub struct Cringepack {
@@ -74,14 +73,14 @@ impl Cringepack {
         row: PyReadonlyArray1<'_, i64>,
         colptr: PyReadonlyArray1<'_, i64>,
         data: PyReadonlyArray1<'_, Complex64>,
+        method: i64,
     ) {
         let row = row.as_array();
         let colptr = colptr.as_array();
         let data = data.as_array();
         let mut mat = gen_mat_view(row, colptr, data).to_owned();
-        
-        self.solver.cholesky(&mut mat);
 
+        self.solver.cholesky(&mut mat, method);
     }
     fn solve(
         &mut self,
