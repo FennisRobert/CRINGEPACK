@@ -13,4 +13,7 @@ SuperLUOpt = SuperLUOpt()
 #run_tests(SET_ALL + SET_EM, [CRINGEPACK, SuperLU, SuperLUOpt])
 N = 1
 #run_tests([SparseMatrix.gen_random(N, 4, 0.3, 'SPD') for _ in range(1)], [CRINGEPACK, SuperLU, SuperLUOpt])
-run_tests([SparseMatrix.gen_random(1000, 4, 0.005, 'SPD') for _ in range(1)], [CRINGEPACK, SuperLU, SuperLUOpt])
+#run_tests([SparseMatrix.gen_random(10000, 4, 0.002, 'SPD_LAP') for _ in range(1)], [CRINGEPACK, SuperLU, SuperLUOpt])
+SET_EM[0].mtype = 'SPD'
+#
+run_tests(SET_EM, [CRINGEPACK, SuperLU, SuperLUOpt])

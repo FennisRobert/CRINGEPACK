@@ -1,5 +1,6 @@
 from __future__ import annotations
-from scipy.sparse import csc_matrix, load_npz
+from scipy.sparse import csc_matrix, load_npz, diags
+
 import numpy as np
 from typing import Literal
 
@@ -25,8 +26,40 @@ class SparseMatrix:
     @staticmethod
     def gen_random(Ndim: int, nb: int, fill_ratio: float = 0.01, mtype: MTYPES = 'Unsymmetric') -> SparseMatrix:
         rng = np.random.default_rng(Ndim * 1000 + nb)
-
-        if mtype == 'SPD':
+        if mtype == 'SPD_LAP':
+            n = int(np.sqrt(Ndim))
+            N = n * n
+            A = np.zeros((N, N), dtype=np.complex128)
+            bandwidth = max(1, int(n * fill_ratio * 10))
+            for i in range(N):
+                row = i // n
+                col = i % n
+                A[i, i] = 4.0 + rng.uniform(0, 1) + 1j * rng.uniform(-0.1, 0.1)
+                for di in range(-bandwidth, bandwidth + 1):
+                    for dj in range(-bandwidth, bandwidth + 1):
+                        if di == 0 and dj == 0:
+                            continue
+                        ni, nj = row + di, col + dj
+                        if 0 <= ni < n and 0 <= nj < n:
+                            j = ni * n + nj
+                            if j > i:
+                                val = rng.uniform(-0.5, 0.5) / (abs(di) + abs(dj)) + 1j * rng.uniform(-0.1, 0.1) / (abs(di) + abs(dj))
+                                A[i, j] = val
+                                A[j, i] = val
+            A = csc_matrix(A)
+            Ndim = N
+        elif mtype == 'SPD_BAND':
+            bandwidth = max(1, int(Ndim * fill_ratio))
+            A = np.zeros((Ndim, Ndim), dtype=np.complex128)
+            for i in range(Ndim):
+                A[i, i] = Ndim + rng.uniform(0, 1) + 1j * rng.uniform(-0.1, 0.1)
+                for j in range(max(0, i - bandwidth), min(Ndim, i + bandwidth + 1)):
+                    if i != j:
+                        val = rng.uniform(-0.5, 0.5) + 1j * rng.uniform(-0.1, 0.1)
+                        A[i, j] = val
+                        A[j, i] = val  # always symmetrize
+            A = csc_matrix(A)
+        elif mtype == 'SPD':
             A = np.zeros((Ndim, Ndim), dtype=np.complex128)
             for i in range(Ndim):
                 A[i, i] = Ndim + rng.uniform(0, 1) + 1j * rng.uniform(-0.1, 0.1)

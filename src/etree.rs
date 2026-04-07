@@ -379,35 +379,6 @@ impl EliminationTree {
         self.startindex = top;
     }
 
-    pub fn n_leafs(&self, post: &Vec<usize>) -> usize {
-        let n = self.etree.len();
-        let mut alive = 0usize;
-        let mut max_alive = 0usize;
-        let mut children_count = vec![0usize; n];
-
-        for i in 0..n {
-            if self.etree[i] != usize::MAX {
-                children_count[self.etree[i]] += 1;
-            }
-        }
-
-        let mut remaining_children = children_count.clone();
-
-        for k in 0..n {
-            let j = post[k];
-            alive += 1;
-
-            if self.etree[j] != usize::MAX {
-                remaining_children[self.etree[j]] -= 1;
-            }
-            alive -= children_count[j];
-
-            max_alive = max_alive.max(alive)
-        }
-        max_alive
-        
-    }
-
     pub fn non_zeros(&self) -> &[usize] {
         &self.stack[self.startindex..self.n]
     }

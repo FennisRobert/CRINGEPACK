@@ -62,7 +62,7 @@ def run_tests(matrices: list[SparseMatrix], solvers: list[SolveMethod]):
         mtype = mat.mtype
         for solver in solvers:
             try:
-                if mtype=='SPD':
+                if 'SPD' in mtype:
                     t_lu = solver.cholesky(A)
                 else:
                     t_lu = solver.lu(A)
