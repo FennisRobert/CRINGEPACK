@@ -30,6 +30,7 @@ designed for symmetric complex sparse systems from EM nedelec curl-curl problems
 | solver | MDoF/s | vibe check |
 |--------|--------|------------|
 | SuperLU | 1000 | sigma |
+| CRINGEPACK w/ METIS Frontal | 250 | Pretty based |
 | CRINGEPACK w/ METIS | 12 | its a start |  
 | CRINGEPACK w/ MEH ordering | 5.5 | embarrassing |
 | CRINGEPACK no ordering | 0.7 | actual brain rot |
