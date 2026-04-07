@@ -8,10 +8,9 @@ use num_complex::Complex64;
 use numpy::ndarray::{Array1, ArrayView1, s};
 const CZERO: Complex64 = Complex64::new(0.0, 0.0);
 const CONE: Complex64 = Complex64::new(1.0, 0.0);
-use crate::pmat::PMatrix;
-use faer::{Accum, Col, ColRef, Mat, Par, Scale, linalg, mat};
-use faer::linalg::matmul::matmul;
-use std::collections::HashSet;
+//use faer::{Accum, Col, ColRef, Mat, Par, Scale, linalg, mat};
+//use faer::linalg::matmul::matmul;
+//use std::collections::HashSet;
 
 struct ColumnBuffer {
     data: Vec<Complex64>,
@@ -40,7 +39,7 @@ impl ColumnBuffer {
         self.counter += 1;
     }
 
-    fn to_column(&mut self, scaler: Complex64, skip_id: usize) -> (Mat<Complex64>, Vec<usize>) {
+    fn to_column(&mut self, scaler: Complex64, skip_id: usize) -> (Vec<Complex64>, Vec<usize>) {
         let mut ids: Vec<usize> = (0..self.counter).collect();
         ids.sort_by_key(|&i| self.rowi[i]);
 
@@ -65,13 +64,14 @@ impl ColumnBuffer {
         }
 
         self.counter = 0usize;
-        let col = Mat::from_fn(out_ids.len(), 1, |i, _| self.buffer[i]);
+        let col: Vec<Complex64> = (0..out_ids.len()).map(|i| self.buffer[i]).collect();
         (col, out_ids)
     }
 }
 
 struct FrontalMatrix {
-    matrix: Mat<Complex64>,
+    column: Vec<Complex64>,
+    matrix: Vec<Vec<Complex64>>,
     colids: Vec<usize>,
     n: usize,
     keep: bool,
@@ -80,20 +80,36 @@ struct FrontalMatrix {
 impl FrontalMatrix {
 
     fn empty(size: usize) -> Self {
-        let mat = Mat::<Complex64>::zeros(size, size);
+        let column = vec![CZERO; size];
         let colids = vec![0usize; size];
-        FrontalMatrix { matrix: mat, colids: colids, n: 0usize, keep: true}
+        let mat: Vec<Vec<Complex64>> = Vec::new();
+        FrontalMatrix { column: column, matrix: mat, colids: colids, n: 0usize, keep: true}
     }
 
-    fn new(matrix: Mat<Complex64>, colids: Vec<usize>) -> Self {
-        let map: HashMap<usize, usize> = colids.iter().enumerate().map(|(i, &v)| (v, i)).collect();
-        let n = matrix.ncols();
+    fn new(column: Vec<Complex64>, colids: Vec<usize>) -> Self {
+        let n = column.len();
+        let mat: Vec<Vec<Complex64>> = Vec::new();
         FrontalMatrix {
-            matrix: matrix,
+            column: column,
+            matrix: mat,
             colids: colids,
             n: n,
             keep: true,
         }
+    }
+
+    fn gen_matrix(&mut self) {
+        if self.matrix.len() != 0 {
+            return
+        }
+        let n = self.column.len();
+        let mut mat = vec![vec![CZERO; n]; n];
+        for i in 0..n {
+            for j in 0..n {
+                mat[i][j] = self.column[i]*self.column[j]
+            }
+        }
+        self.matrix = mat;
     }
     fn local_index(&self, global: &usize) -> Option<usize> {
         self.colids.binary_search(global).ok()
@@ -101,29 +117,28 @@ impl FrontalMatrix {
 
     fn get_diag(&self, index: &usize) -> Option<Complex64> {
         match self.local_index(index) {
-            Some(i) => Some(self.matrix[(i, i)]),
+            Some(i) => Some(self.matrix[i][i]),
             None => None,
         }
     }
 
     fn absorb(&mut self, other: &FrontalMatrix) {
+        if self.matrix.len()==0 {
+            self.gen_matrix();
+        }
         for (i, irow) in other.colids.iter().enumerate().skip(1) {
-
-            // Find the row in this frontal matrix corresponding the the row in the other FM to be merged.
             let i_row_fm = self.local_index(irow).unwrap();
-            //
             for (j, jcol) in other.colids.iter().enumerate().skip(1) {
                 let j_col_fm = self.local_index(jcol).unwrap();
-                self.matrix[(i_row_fm, j_col_fm)] += other.matrix[(i, j)];
+                self.matrix[i_row_fm][j_col_fm] += other.matrix[i][j];
             }
         }
     }
-
     /// Iterates over column i_col and returns the (index, value) tuple
     fn iter_column(&self, i_col: usize) -> Vec<(usize, Complex64)> {
         match self.local_index(&i_col) {
             Some(icol) => (0..self.n)
-                .map(|i| (self.colids[i], self.matrix[(i, icol)]))
+                .map(|i| (self.colids[i], self.matrix[i][icol]))
                 .collect(),
             None => {
                 panic!(
@@ -160,19 +175,9 @@ impl FrontalMatrixStack {
         self.mats[i_base].keep = false;
     }
 
-    fn add_from_vec(&mut self, vec: Mat<Complex64>, colids: Vec<usize>, parent: usize) -> usize {
-        let n = vec.nrows();
-        let mut matrix = Mat::<Complex64>::zeros(n,n);
-        matmul(
-            matrix.as_mut(),
-            Accum::Replace,
-            vec.as_ref(),
-            vec.transpose(),
-            CONE,
-            Par::Seq,
-        );
+    fn add_from_vec(&mut self, column: Vec<Complex64>, colids: Vec<usize>, parent: usize) -> usize {
         let idx = self.mats.len();
-        self.mats.push(FrontalMatrix ::new(matrix,colids));
+        self.mats.push(FrontalMatrix::new(column, colids));
         self.parents.push(parent);
         idx
     }
@@ -190,10 +195,8 @@ impl FrontalMatrixStack {
     }
 
     /// Returns the frontal matrices who's parent is index = index.
-    fn iter_parent(&self, index: usize) -> impl Iterator<Item = (usize, &FrontalMatrix)> {
-        (0..self.parents.len())
-            .filter(move |&i| self.parents[i] == index)
-            .map(move |i| (i, &self.mats[i]))
+    fn iter_parent(&mut self, index: usize) -> Vec<usize> {
+        (0..self.parents.len()).filter(move |&i| self.parents[i] == index).collect()
     }
 }
 
@@ -251,15 +254,17 @@ pub fn cholesky_decomp_mf(mat_c: &CCMatrixOwned, symb: &mut CCSymbolic) -> Optio
         to_remove.clear();
 
         // For each frontal matrix of which the current column is the parent.
-        for (ip, fm) in fmstack.iter_parent(i_col) {
+        for &ip in fmstack.iter_parent(i_col).iter() {
+
             // subtract the frontal matrix entry from L11
-            match fm.get_diag(&i_col) {
+            fmstack.mats[ip].gen_matrix();
+            match fmstack.mats[ip].get_diag(&i_col) {
                 Some(value) => l11 = l11 - value,
                 None => {}
             }
             // For each other entry in the frontal matrix
             //println!("{}, Mergin frontal matrix with nodes: {:?}", i_col, fm.colids);
-            for (irow, d) in fm.iter_column(i_col) {
+            for (irow, d) in fmstack.mats[ip].iter_column(i_col) {
                 // Skip the diagonal L11
                 if irow <= i_col {
                     continue;
@@ -282,7 +287,7 @@ pub fn cholesky_decomp_mf(mat_c: &CCMatrixOwned, symb: &mut CCSymbolic) -> Optio
 
             let mut ptr = 0usize;
             for (i, &row) in l12_ids.iter().enumerate() {
-                mat_l.data[mat_l.indptr[i_col] + ptr + 1] += l12[(i, 0usize)];
+                mat_l.data[mat_l.indptr[i_col] + ptr + 1] += l12[i];
                 mat_l.rows[mat_l.indptr[i_col] + ptr + 1] = row;
                 ptr += 1
             }
